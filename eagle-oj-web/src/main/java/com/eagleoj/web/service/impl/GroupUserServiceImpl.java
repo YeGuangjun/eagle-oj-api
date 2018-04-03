@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * @author Smith
@@ -83,6 +84,10 @@ public class GroupUserServiceImpl implements GroupUserService {
         return groupUserMapper.listGroupMembersByGid(gid);
     }
 
+    public List<Map<String, Object>> listGroupMembersRank(int gid) {
+        return groupUserMapper.listGroupMembersRankByGid(gid);
+    }
+
     @Override
     public void deleteGroupMember(int gid, int uid) {
         boolean flag = groupUserMapper.deleteByGidUid(gid, uid) == 1;
@@ -100,6 +105,9 @@ public class GroupUserServiceImpl implements GroupUserService {
         GroupEntity groupEntity = groupService.getGroup(gid);
         // 密码校对
         if (groupEntity.getPassword() != null) {
+            if (password == null) {
+                throw new WebErrorException("密码不得为空");
+            }
             if (! password.equals(groupEntity.getPassword())) {
                 throw new WebErrorException("密码错误");
             }

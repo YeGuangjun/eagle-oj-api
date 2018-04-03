@@ -19,11 +19,11 @@ public interface ContestMapper {
 
     int count();
 
-    List<ContestEntity> listByUid(int uid);
+    List<ContestEntity> listByUidGid(@Param("uid") int uid, @Param("gid") int gid);
 
     List<Map<String, Object>> listContests(@Param("isAll") boolean isAll);
 
-    List<ContestEntity> listContestsByGid(int gid);
+    List<ContestEntity> listContestsByGid(@Param("gid") int gid, @Param("status") Integer status);
 
     int deleteByCid(int cid);
 

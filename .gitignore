@@ -1,3 +1,6 @@
+# web create temporary data
+/data/
+
 # idea
 *.iml
 .idea/

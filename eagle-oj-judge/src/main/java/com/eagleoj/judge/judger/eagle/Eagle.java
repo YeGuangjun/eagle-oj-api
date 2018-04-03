@@ -14,13 +14,19 @@ import com.eagleoj.judge.judger.JudgerApi;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author Smith
  **/
 public class Eagle implements JudgerApi {
 
-    private final OkHttpClient CLIENT = new OkHttpClient();
+    private final OkHttpClient CLIENT = new OkHttpClient()
+            .newBuilder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
 
     private String REQUEST_URL;
 
@@ -57,7 +63,7 @@ public class Eagle implements JudgerApi {
         JSONObject obj = JSON.parseObject(json);
         ResultEnum result = convertStringToResult(obj.getString("result"));
         if (result.equals(ResultEnum.SE)) {
-            throw new Exception("远程判卷错误："+obj.getString("error_message"));
+            throw new Exception("Remote judge error:"+obj.getString("error_message"));
         }
 
         JSONArray testCases = obj.getJSONArray("test_cases");

@@ -3,6 +3,7 @@ package com.eagleoj.web.controller;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.eagleoj.web.controller.format.user.SendGroupUserMessageFormat;
+import com.eagleoj.web.data.status.ContestStatus;
 import com.eagleoj.web.data.status.RoleStatus;
 import com.eagleoj.web.postman.task.SendGroupUserMessageTask;
 import com.eagleoj.web.service.ContestService;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * @author Smith
@@ -54,18 +56,14 @@ public class GroupController {
     @Autowired
     private ContestService contestService;
 
-    @Autowired
-    private TaskQueue taskQueue;
-
     @ApiOperation("获取小组的公共信息")
     @GetMapping("/{gid}/info")
-    public ResponseEntity getGroupInfo(@PathVariable("gid") int gid,
-                                   @RequestParam(name = "is_detail", defaultValue = "false", required = false) boolean isDetail) {
+    public ResponseEntity getGroupInfo(@PathVariable("gid") int gid) {
         GroupEntity groupEntity = groupService.getGroup(gid);
         UserEntity userEntity = userService.getUserByUid(groupEntity.getOwner());
         String json = JSON.toJSONString(groupEntity);
         JSONObject jsonObject = JSON.parseObject(json);
-        jsonObject.put("leader", userEntity.getNickname());
+        jsonObject.put("nickname", userEntity.getNickname());
         if (jsonObject.containsKey("password")) {
             jsonObject.replace("password", "You can't see it!");
         }
@@ -86,11 +84,8 @@ public class GroupController {
     @GetMapping("/{gid}/user/{uid}")
     public ResponseEntity getMeInfo(@PathVariable("gid") int gid,
                                     @PathVariable("uid") int uid) {
-        GroupEntity groupEntity = groupService.getGroup(gid);
-        accessToEditOwnInfo(uid, groupEntity);
         try {
-            Map<String, Object> groupUser = groupUserService.getGroupUserInfo(gid, uid);
-            return new ResponseEntity(groupUser);
+            return new ResponseEntity(groupUserService.getGroupUserInfo(gid, uid));
         } catch (Exception e) {
             return new ResponseEntity(null);
         }
@@ -135,21 +130,35 @@ public class GroupController {
     @GetMapping("/{gid}/members")
     public ResponseEntity getGroupMembers(@PathVariable("gid") int gid,
                                           @RequestParam("page") int page,
-                                          @RequestParam("page_size") int pageSize) {
+                                          @RequestParam("page_size") int pageSize,
+                                          @RequestParam(name = "rank", required = false, defaultValue = "False") boolean withRank) {
         GroupEntity groupEntity = groupService.getGroup(gid);
         accessToViewGroup(groupEntity);
         Page pager = PageHelper.startPage(page, pageSize);
-        List<GroupUserEntity> list = groupUserService.listGroupMembers(gid);
-        return new ResponseEntity(WebUtil.generatePageData(pager, list));
+        if (withRank) {
+            return new ResponseEntity(WebUtil.generatePageData(pager, groupUserService.listGroupMembersRank(gid)));
+        } else {
+            return new ResponseEntity(WebUtil.generatePageData(pager, groupUserService.listGroupMembers(gid)));
+        }
     }
 
     @ApiOperation("获取小组的小组赛")
     @RequiresAuthentication
     @GetMapping("/{gid}/contests")
-    public ResponseEntity getGroupContests(@PathVariable int gid) {
+    public ResponseEntity getGroupContests(@PathVariable int gid,
+                                           @RequestParam("page") int page,
+                                           @RequestParam("page_size") int pageSize,
+                                           @RequestParam("is_valid") boolean isValid) {
         GroupEntity groupEntity = groupService.getGroup(gid);
         accessToViewGroup(groupEntity);
-        return new ResponseEntity(contestService.listGroupContests(gid));
+        Page pager = PageHelper.startPage(page, pageSize);
+        ContestStatus status;
+        if (isValid) {
+            status = ContestStatus.USING;
+        } else {
+            status = null;
+        }
+        return new ResponseEntity(WebUtil.generatePageData(pager, contestService.listGroupContests(gid, status)));
     }
 
     @ApiOperation("加入小组")
@@ -157,7 +166,6 @@ public class GroupController {
     @PostMapping("/{gid}/enter")
     public ResponseEntity enterGroup(@PathVariable("gid") int gid,
                                      @RequestBody @Valid EnterGroupFormat format) {
-
         groupUserService.joinGroup(gid, SessionHelper.get().getUid(), format.getPassword());
         return new ResponseEntity("小组加入成功");
     }

@@ -51,6 +51,9 @@ public class CodeController {
             JSONObject obj = format.getTestCases().getJSONObject(i);
             String stdin = obj.getString("stdin");
             String stdout = obj.getString("stdout");
+            if (stdout.length() == 0) {
+                throw new WebErrorException("输出字符串不得为空");
+            }
             TestCaseEntity testCaseEntity = new TestCaseEntity(0, stdin, stdout, 0, 0L);
             testCases.add(testCaseEntity);
         }
@@ -71,7 +74,7 @@ public class CodeController {
         int owner = SessionHelper.get().getUid();
         String id;
         if (gid != 0 && cid != 0) {
-            id = asyncJudgeService.addGroupJudge(sourceCode, lang, owner, pid, cid);
+            id = asyncJudgeService.addGroupJudge(sourceCode, lang, owner, pid, cid, gid);
         } else if (cid != 0) {
             id = asyncJudgeService.addContestJudge(sourceCode, lang, owner, pid, cid);
         } else {

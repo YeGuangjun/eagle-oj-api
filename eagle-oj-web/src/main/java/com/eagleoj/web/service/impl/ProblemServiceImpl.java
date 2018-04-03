@@ -7,16 +7,26 @@ import com.eagleoj.web.controller.exception.WebErrorException;
 import com.eagleoj.web.dao.ProblemMapper;
 import com.eagleoj.web.dao.TagProblemMapper;
 import com.eagleoj.web.dao.TagsMapper;
+import com.eagleoj.web.data.status.ProblemStatus;
 import com.eagleoj.web.entity.ProblemEntity;
+import com.eagleoj.web.entity.TagEntity;
 import com.eagleoj.web.entity.TagProblemEntity;
+import com.eagleoj.web.entity.TestCaseEntity;
 import com.eagleoj.web.service.*;
 import com.eagleoj.web.service.async.AsyncTaskService;
 import com.eagleoj.web.util.WebUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ResourceUtils;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,6 +36,8 @@ import java.util.stream.Collectors;
  **/
 @Service
 public class ProblemServiceImpl implements ProblemService {
+
+    private Logger LOGGER = LoggerFactory.getLogger(this.getClass());
 
     @Autowired
     private ProblemMapper problemMapper;
@@ -55,7 +67,7 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public int save(JSONArray tags, int owner, String title, JSONObject description,
                     JSONObject inputFormat, JSONObject outputFormat,
-                          int difficult, JSONArray samples, int time, int memory) {
+                    int difficult, JSONArray samples, int time, int memory, ProblemStatus status) {
         // 保存tag标签并且添加tag标签使用次数
         List<Integer> tagList = new ArrayList<>(tags.size());
         for(int i=0; i<tags.size(); i++) {
@@ -79,7 +91,7 @@ public class ProblemServiceImpl implements ProblemService {
         problemEntity.setSamples(samples);
         problemEntity.setTime(time);
         problemEntity.setMemory(memory);
-        problemEntity.setStatus(0);
+        problemEntity.setStatus(status.getNumber());
         problemEntity.setCreateTime(System.currentTimeMillis());
         boolean flag = problemMapper.save(problemEntity) == 1;
         WebUtil.assertIsSuccess(flag, "题目添加失败");
@@ -95,6 +107,11 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public int countProblems() {
         return problemMapper.count();
+    }
+
+    @Override
+    public int countAuditingProblems() {
+        return problemMapper.countAuditing();
     }
 
     @Override
@@ -214,12 +231,128 @@ public class ProblemServiceImpl implements ProblemService {
     }
 
     @Override
-    public List<ProblemEntity> listProblemsForContest(int uid) {
-        return problemMapper.listProblemsForContest(uid);
+    public List<ProblemEntity> listProblemsForContest(int uid, String query) {
+        return problemMapper.listProblemsForContest(uid, query);
     }
 
     @Override
     public List<ProblemEntity> listAllProblems() {
         return problemMapper.listAll();
+    }
+
+    @Override
+    public boolean exportProblems(JSONArray pidList) {
+        JSONArray data = new JSONArray();
+        for (int i=0; i<pidList.size(); i++) {
+            int pid = pidList.getInteger(i);
+            JSONObject obj = new JSONObject();
+            // add problem
+            ProblemEntity problemEntity = problemMapper.getByPid(pid);
+            obj.put("title", problemEntity.getTitle());
+            obj.put("description", problemEntity.getDescription());
+            obj.put("input_format", problemEntity.getInputFormat());
+            obj.put("output_format", problemEntity.getOutputFormat());
+            obj.put("difficult", problemEntity.getDifficult());
+            obj.put("samples", problemEntity.getSamples());
+            obj.put("time", problemEntity.getTime());
+            obj.put("memory", problemEntity.getMemory());
+            // add test cases
+            List<TestCaseEntity> testCases = testCasesService.listProblemTestCases(pid);
+            JSONArray testCaseArray = new JSONArray(testCases.size());
+            for (TestCaseEntity entity: testCases) {
+                JSONObject tempObj = new JSONObject();
+                tempObj.put("stdin", entity.getStdin());
+                tempObj.put("stdout", entity.getStdout());
+                tempObj.put("strength", entity.getStrength());
+                testCaseArray.add(tempObj);
+            }
+            obj.put("test_cases", testCaseArray);
+            // add tags
+            List<Map<String, Object>> tagsList = listProblemTags(pid);
+            JSONArray tags = new JSONArray(tagsList.size());
+            for (Map<String, Object> tag: tagsList) {
+                tags.add(tag.get("name"));
+            }
+            obj.put("tags", tags);
+            data.add(obj);
+        }
+        FileOutputStream fileOutputStream = null;
+        try {
+            Calendar calendar = Calendar.getInstance();
+            String filename = calendar.get(Calendar.YEAR)+"-"
+                    +calendar.get(Calendar.MONTH)+"-"
+                    +calendar.get(Calendar.DAY_OF_MONTH)+"-"
+                    +calendar.get(Calendar.HOUR_OF_DAY)+"-"
+                    +calendar.get(Calendar.MINUTE)+"-"
+                    +calendar.get(Calendar.SECOND)+".json";
+
+            File parent = new File("data");
+            if (! parent.exists()) {
+                if (! parent.mkdir()) {
+                    throw new IOException("create dictionary failed");
+                }
+            }
+
+            File file = new File("data/"+filename);
+            if (! file.exists()) {
+                if (! file.createNewFile()) {
+                    throw new IOException("create file failed");
+                }
+            }
+            fileOutputStream = new FileOutputStream(file, false);
+            fileOutputStream.write(data.toJSONString().getBytes("utf-8"));
+        } catch (IOException e) {
+            LOGGER.error(e.getMessage(), e);
+            return false;
+        } finally {
+            try {
+                if (fileOutputStream != null) {
+                    fileOutputStream.close();
+                }
+            } catch (IOException e) {
+                LOGGER.error(e.getMessage());
+            }
+        }
+        return true;
+    }
+
+    @Transactional
+    @Override
+    public boolean importProblems(int uid, JSONArray list) {
+        for (int i=0; i<list.size(); i++) {
+            JSONObject obj = list.getJSONObject(i);
+            JSONArray tags = obj.getJSONArray("tags");
+            JSONArray tagsList = new JSONArray(tags.size());
+            for (int j=0; j<tags.size(); j++) {
+                String tagName = tags.getString(j);
+                TagEntity tagEntity = null;
+                try {
+                    tagEntity = tagsService.getByName(tagName);
+                } catch (Exception e) {}
+                if (tagEntity == null) {
+                    tagsList.add(tagsService.save(tagName));
+                } else {
+                    tagsList.add(tagEntity.getTid());
+                }
+            }
+
+            String title = obj.getString("title");
+            JSONObject description = obj.getJSONObject("description");
+            JSONObject inputFormat = obj.getJSONObject("input_format");
+            JSONObject outputFormat = obj.getJSONObject("output_format");
+            int difficult = obj.getInteger("difficult");
+            JSONArray samples = obj.getJSONArray("samples");
+            int time = obj.getInteger("time");
+            int memory = obj.getInteger("memory");
+            int pid = save(tagsList, uid, title, description, inputFormat, outputFormat, difficult, samples, time, memory, ProblemStatus.SHARING);
+            // save test cases
+            JSONArray testCases = obj.getJSONArray("test_cases");
+            for (int j=0; j<testCases.size(); j++) {
+                JSONObject testCase = testCases.getJSONObject(j);
+                testCasesService.save(pid, testCase.getString("stdin"), testCase.getString("stdout"),
+                        testCase.getInteger("strength"));
+            }
+        }
+        return true;
     }
 }

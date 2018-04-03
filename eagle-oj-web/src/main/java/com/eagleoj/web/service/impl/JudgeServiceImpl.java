@@ -8,11 +8,13 @@ import com.eagleoj.web.controller.exception.WebErrorException;
 import com.eagleoj.web.data.status.ContestTypeStatus;
 import com.eagleoj.web.data.status.ProblemStatus;
 import com.eagleoj.web.entity.*;
+import com.eagleoj.web.file.FileService;
 import com.eagleoj.web.judger.JudgeResult;
 import com.eagleoj.web.judger.task.ContestJudgeTask;
 import com.eagleoj.web.judger.task.GroupJudgeTask;
 import com.eagleoj.web.judger.task.ProblemJudgeTask;
 import com.eagleoj.web.service.*;
+import com.eagleoj.web.setting.SettingService;
 import com.eagleoj.web.util.FileUtil;
 import com.eagleoj.web.util.WebUtil;
 import org.slf4j.Logger;
@@ -33,7 +35,7 @@ public class JudgeServiceImpl implements JudgeService {
     private Logger LOGGER = LoggerFactory.getLogger(this.getClass());
 
     @Autowired
-    private FileUtil fileUtil;
+    private FileService fileService;
 
     @Autowired
     private SubmissionService submissionService;
@@ -64,6 +66,9 @@ public class JudgeServiceImpl implements JudgeService {
 
     @Autowired
     private GroupUserService groupUserService;
+
+    @Autowired
+    private SettingService settingService;
 
     @Override
     public JudgeResult getJudgeResult(String id) {
@@ -117,13 +122,17 @@ public class JudgeServiceImpl implements JudgeService {
     @Override
     public void saveGroupContestCode(GroupJudgeTask task, ResponseEntity response) {
         int gid = task.getGid();
-        saveContestCode(task, response, gid);
+        boolean isAC = saveContestCode(task, response, gid);
 
+        if (isAC) {
+            return;
+        }
         // 更新组内用户记录
         updateGroupUserTimes(task.getGid(), task.getOwner(), response.getResult());
     }
 
-    private void saveContestCode(ContestJudgeTask task, ResponseEntity response, int gid) {
+    // 返回是否已经AC
+    private boolean saveContestCode(ContestJudgeTask task, ResponseEntity response, int gid) {
         int pid = task.getPid();
         int cid = task.getCid();
         int owner = task.getOwner();
@@ -152,7 +161,7 @@ public class JudgeServiceImpl implements JudgeService {
         }
 
         if (isAC) {
-            return;
+            return true;
         }
 
         updateContestProblemTimes(cid, pid, result);
@@ -162,18 +171,22 @@ public class JudgeServiceImpl implements JudgeService {
         if (task.getContestEntity().getOfficial() == 1) {
             updateUserTimes(owner, result);
         }
+        return false;
     }
 
     private void saveSubmission(String sourceCode, LanguageEnum lang, double time, int memory, ResultEnum result,
                                 int owner, int pid, int cid, int gid) {
-        String uploadURL = null;
-        try {
-            uploadURL = fileUtil.uploadCode(lang, sourceCode);
-        } catch (Exception e) {
-            LOGGER.error(e.getMessage(), e);
-            throw new WebErrorException("保存代码记录失败");
+        int aid = 0;
+        if (settingService.isOpenStorage()) {
+            String uploadURL = null;
+            try {
+                uploadURL = fileService.uploadCode(lang, sourceCode);
+            } catch (Exception e) {
+                LOGGER.error(e.getMessage(), e);
+                throw new WebErrorException("保存代码记录失败");
+            }
+            aid = attachmentService.save(owner, uploadURL);
         }
-        int aid = attachmentService.save(owner, uploadURL);
         submissionService.save(owner, pid, cid, gid, aid, lang, time, memory, result);
     }
 

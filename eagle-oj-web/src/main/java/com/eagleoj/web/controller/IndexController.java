@@ -1,6 +1,6 @@
 package com.eagleoj.web.controller;
 
-import com.eagleoj.web.setting.SettingKeyMapper;
+import com.eagleoj.web.setting.SettingEnum;
 import com.eagleoj.web.setting.SettingService;
 import com.eagleoj.web.entity.AttachmentEntity;
 import com.eagleoj.web.entity.ResponseEntity;
@@ -32,7 +32,11 @@ public class IndexController {
     public void getAvatar(@RequestParam("aid") int aid,
                           HttpServletResponse response) throws IOException {
         AttachmentEntity entity = attachmentService.getAvatar(aid);
-        String OSS_URL = settingService.getSetting(SettingKeyMapper.OSS_URL);
+        if (! settingService.isOpenStorage()) {
+            response.getWriter().append("未开启存储功能");
+            return;
+        }
+        String OSS_URL = settingService.getSetting(SettingEnum.OSS_URL);
         response.sendRedirect(OSS_URL+entity.getUrl());
     }
 

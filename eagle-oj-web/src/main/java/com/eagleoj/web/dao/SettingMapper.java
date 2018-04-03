@@ -11,9 +11,12 @@ import java.util.List;
  **/
 @Repository
 public interface SettingMapper {
-    List<SettingEntity> listAll();
 
-    int updateByKey(@Param("key") String key, @Param("value") String value);
+    int save(SettingEntity entity);
 
-    int batchSave(List<SettingEntity> list);
+    int saveList(List<SettingEntity> entities);
+
+    SettingEntity getByKey(String key);
+
+    List<SettingEntity> listByKeys(List<String> keys);
 }

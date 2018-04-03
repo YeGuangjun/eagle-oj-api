@@ -41,8 +41,9 @@ public class CacheController {
                         CacheConfigurationBuilder.newCacheConfigurationBuilder(
                                 String.class,
                                 JudgeResult.class,
-                                ResourcePoolsBuilder.newResourcePoolsBuilder().heap(10, MemoryUnit.MB))
+                                ResourcePoolsBuilder.newResourcePoolsBuilder().heap(100, MemoryUnit.MB))
                                 .withExpiry(Expirations.timeToLiveExpiration(Duration.of(1, TimeUnit.HOURS)))
+                                .withSizeOfMaxObjectGraph(5000)
                                 .build());
         leaderboardCache = cacheManager
                 .createCache("leaderboardCache",
@@ -63,4 +64,5 @@ public class CacheController {
     public static Cache<Integer, Object> getLeaderboard() {
         return leaderboardCache;
     }
+
 }
